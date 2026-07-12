@@ -16,7 +16,9 @@ Homescreen legen (PWA).
   - letzte zwei Plätze: direkter Abstieg, drittletzter: Relegation
   - (pro Liga im Adminportal frei konfigurierbar, z. B. CL-Plätze für die 1. Bundesliga)
 - **Team-Statistik** in der Datenbank: Heim/Auswärts-Bilanz, Form der letzten 5 Spiele
-- **Torschützentabelle** je Liga (aus den erfassten Toren berechnet, Eigentore ausgenommen)
+- **Torschützentabelle** je Liga: aus den erfassten Toren berechnet (Eigentore
+  ausgenommen); Fallback auf die offizielle Torjägerliste des Datenanbieters,
+  z. B. bei Turnieren ohne gepflegte Schützennamen
 - **Filter** nach Liga und Mannschaft
 - **Favoriten** pro Benutzer (Stern-Markierung + Push)
 - **4 Farbschemata**: Dunkel, Hell, Rasen, Retro
@@ -83,6 +85,7 @@ funktioniert Push auch direkt im Browser.
 | `ADMIN_PASSWORD` | `admin` | Passwort des ersten Admin-Users (nur Erststart) |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | Kontakt für den Push-Dienst |
 | `SYNC_INTERVAL_SECONDS` | `60` | Abfrage-Intervall OpenLigaDB (min. 15) |
+| `FOOTBALL_DATA_API_KEY` | – | Optionaler Override; normalerweise im Adminportal → Einstellungen pflegen |
 | `DEMO` | – | `1` = Beispieldaten + simuliertes Livespiel |
 
 VAPID-Schlüssel für Push werden beim ersten Start automatisch erzeugt und in
@@ -90,9 +93,25 @@ der Datenbank gespeichert.
 
 ## Datenquellen
 
-Verwendet wird **[OpenLigaDB](https://www.openligadb.de)** (`api.openligadb.de`):
+**Primär: [OpenLigaDB](https://www.openligadb.de)** (`api.openligadb.de`):
 kostenlos, ohne API-Key, community-gepflegt, mit 1.–3. Bundesliga, DFB-Pokal,
 EM und WM. Ideal für den Fokus „deutsche Ligen zuerst“.
+
+**Optional: [football-data.org](https://www.football-data.org)** für die
+internationalen Top-Wettbewerbe (Premier League, La Liga, Serie A, Ligue 1,
+Eredivisie, Primeira Liga, Championship, Brasilien, Champions League, WM, EM):
+
+1. Kostenlosen API-Key holen: <https://www.football-data.org/client/register>
+2. Key im **Adminportal → Einstellungen** eintragen (sofort aktiv, kein Neustart
+   nötig; alternativ als Umgebungsvariable `FOOTBALL_DATA_API_KEY`, die hat Vorrang)
+3. Im Adminportal → Ligen nach z. B. „premier“ oder „champions“ suchen —
+   Treffer von football-data.org sind entsprechend markiert (Kürzel `fdPL`, `fdCL`, …)
+
+Einschränkungen des Gratis-Plans: Live-Stände leicht verzögert, keine
+Einzeltor-/Kartendaten (Tor-Push-Meldungen entstehen aus der
+Spielstands-Änderung, ohne Torschützen-Name), Torschützentabelle kommt über
+die offizielle Scorer-Liste. 10 Anfragen/Minute — die App bündelt deshalb
+alle football-data-Ligen in einen einzigen Live-Request pro Abfragezyklus.
 
 Bewertete Alternativen:
 

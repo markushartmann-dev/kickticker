@@ -14,6 +14,10 @@ services:
       - VAPID_SUBJECT=mailto:markushartmann.spam@googlemail.com
       # Abfrage-Intervall bei OpenLigaDB in Sekunden (min. 15)
       - SYNC_INTERVAL_SECONDS=60
+      # Optional: API-Key von football-data.org fuer internationale Top-Ligen.
+      # Am einfachsten im Adminportal -> Einstellungen eintragen; diese
+      # Variable ist nur ein Override und hat dann Vorrang.
+      # - FOOTBALL_DATA_API_KEY=dein-key
       # DEMO=1 aktiviert Beispieldaten + simuliertes Livespiel (ohne Internet)
       # - DEMO=1
 

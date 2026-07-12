@@ -8,6 +8,7 @@ const auth = require('./lib/auth');
 const { initVapid, notifyUser } = require('./lib/push');
 const sync = require('./lib/sync');
 const olb = require('./lib/openligadb');
+const fd = require('./lib/footballdata');
 
 const app = express();
 app.use(express.json());
@@ -63,6 +64,7 @@ app.get('/api/config', (req, res) => {
     vapidPublicKey,
     user: user ? { id: user.id, username: user.username, isAdmin: !!user.is_admin } : null,
     lastSync: getSetting('last_sync'),
+    dataSources: ['OpenLigaDB'].concat(fd.isConfigured() ? ['football-data.org'] : []),
   });
 });
 
@@ -222,17 +224,27 @@ app.get('/api/scorers', (req, res) => {
     byScorer.set(g.scorer, entry);
   }
 
-  const scorers = [...byScorer.values()]
+  let scorers = [...byScorer.values()]
     .map((e) => ({
       name: e.name,
       goals: e.goals,
       penalties: e.penalties,
       team: e.teams.size ? [...e.teams.entries()].sort((a, b) => b[1] - a[1])[0][0] : null,
     }))
-    .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name))
-    .slice(0, 30)
-    .map((e, i) => ({ position: i + 1, ...e }));
-  res.json(scorers);
+    .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name));
+
+  // Fallback: offizielle Torjaegerliste des Anbieters (z.B. wenn OpenLigaDB
+  // bei Turnieren keine Schuetzennamen in den Tordaten pflegt)
+  if (!scorers.length) {
+    scorers = db
+      .prepare(
+        `SELECT name, team, goals, penalties FROM top_scorers
+         WHERE league_shortcut = ? AND season = ?
+         ORDER BY goals DESC, name`
+      )
+      .all(league, season);
+  }
+  res.json(scorers.slice(0, 30).map((e, i) => ({ position: i + 1, ...e })));
 });
 
 // Team-Statistik (Heim/Auswaerts, Form der letzten 5 Spiele)
@@ -414,14 +426,25 @@ app.get('/api/admin/leagues', auth.requireAdmin, (req, res) => {
 app.post('/api/admin/leagues', auth.requireAdmin, async (req, res) => {
   const { shortcut, season, name, zones } = req.body || {};
   if (!shortcut || !season || !name) return res.status(400).json({ error: 'shortcut, season und name erforderlich' });
+  const cleanShortcut = shortcut.trim();
+  const cleanSeason = String(season).trim();
+  // Kuerzel "fd<CODE>" (z.B. fdPL, fdCL, fdWC) -> football-data.org
+  const fdMatch = cleanShortcut.match(/^fd([A-Za-z0-9]+)$/);
+  const provider = fdMatch ? 'footballdata' : 'openligadb';
+  if (provider === 'footballdata' && !fd.isConfigured()) {
+    return res.status(400).json({ error: 'FOOTBALL_DATA_API_KEY ist nicht gesetzt' });
+  }
   db.prepare(
-    `INSERT INTO leagues (shortcut, season, name, enabled, zones, sort_order)
-     VALUES (?, ?, ?, 1, ?, 50)
-     ON CONFLICT(shortcut, season) DO UPDATE SET name = excluded.name, enabled = 1`
-  ).run(shortcut.trim(), String(season).trim(), name.trim(), JSON.stringify(zones || []));
+    `INSERT INTO leagues (shortcut, season, name, enabled, zones, sort_order, provider, provider_league_id)
+     VALUES (?, ?, ?, 1, ?, 50, ?, ?)
+     ON CONFLICT(shortcut, season) DO UPDATE SET name = excluded.name, enabled = 1,
+       provider = excluded.provider, provider_league_id = excluded.provider_league_id`
+  ).run(cleanShortcut, cleanSeason, name.trim(), JSON.stringify(zones || []),
+        provider, fdMatch ? fdMatch[1].toUpperCase() : null);
+  const leagueRow = db.prepare('SELECT * FROM leagues WHERE shortcut = ? AND season = ?').get(cleanShortcut, cleanSeason);
   // Direkt erste Daten laden (ohne Push-Flut)
   try {
-    const r = await sync.fullSyncLeague(shortcut.trim(), String(season).trim(), { silent: true });
+    const r = await sync.fullSyncLeague(leagueRow, { silent: true });
     res.json({ ok: true, imported: r.matches });
   } catch (err) {
     res.json({ ok: true, imported: 0, warning: `Liga gespeichert, Erstimport fehlgeschlagen: ${err.message}` });
@@ -446,18 +469,31 @@ app.delete('/api/admin/leagues/:shortcut/:season', auth.requireAdmin, (req, res)
 
 // Verfuegbare Ligen bei OpenLigaDB suchen (z.B. "em", "wm", "uefa")
 app.get('/api/admin/available-leagues', auth.requireAdmin, async (req, res) => {
+  const q = (req.query.q || '').toLowerCase();
+  const results = [];
+  const errors = [];
   try {
-    const q = (req.query.q || '').toLowerCase();
     let leagues = await olb.getAvailableLeagues();
     if (q) {
       leagues = leagues.filter(
         (l) => l.name.toLowerCase().includes(q) || l.shortcut.toLowerCase().includes(q)
       );
     }
-    res.json(leagues.slice(0, 100));
+    results.push(...leagues.slice(0, 60));
   } catch (err) {
-    res.status(502).json({ error: `OpenLigaDB nicht erreichbar: ${err.message}` });
+    errors.push(`OpenLigaDB: ${err.message}`);
   }
+  if (fd.isConfigured()) {
+    try {
+      results.push(...(await fd.searchCompetitions(q)).slice(0, 40));
+    } catch (err) {
+      errors.push(`football-data.org: ${err.message}`);
+    }
+  }
+  if (!results.length && errors.length) {
+    return res.status(502).json({ error: errors.join(' | ') });
+  }
+  res.json(results.slice(0, 100));
 });
 
 app.post('/api/admin/sync', auth.requireAdmin, async (req, res) => {
@@ -466,6 +502,39 @@ app.post('/api/admin/sync', auth.requireAdmin, async (req, res) => {
     res.json({ ok: true, lastSync: getSetting('last_sync') });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: App-Einstellungen (u.a. football-data.org-Key, in der DB gespeichert)
+app.get('/api/admin/settings', auth.requireAdmin, (req, res) => {
+  const fromEnv = !!process.env.FOOTBALL_DATA_API_KEY;
+  const stored = getSetting('football_data_api_key', '') || '';
+  const active = fromEnv ? process.env.FOOTBALL_DATA_API_KEY : stored;
+  res.json({
+    footballData: {
+      configured: !!active,
+      fromEnv,
+      masked: active ? (active.length > 8 ? active.slice(0, 4) + '••••' + active.slice(-4) : '••••••') : null,
+    },
+  });
+});
+
+app.post('/api/admin/settings', auth.requireAdmin, (req, res) => {
+  const { footballDataApiKey } = req.body || {};
+  if (footballDataApiKey !== undefined) {
+    setSetting('football_data_api_key', String(footballDataApiKey).trim());
+  }
+  res.json({ ok: true });
+});
+
+// Verbindungstest: fragt die Wettbewerbsliste mit dem hinterlegten Key ab
+app.post('/api/admin/settings/test-football-data', auth.requireAdmin, async (req, res) => {
+  if (!fd.isConfigured()) return res.status(400).json({ error: 'Kein football-data.org-Key hinterlegt' });
+  try {
+    const comps = await fd.searchCompetitions('');
+    res.json({ ok: true, competitions: comps.length });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 

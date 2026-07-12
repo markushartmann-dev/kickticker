@@ -120,10 +120,10 @@ async function renderLeagues() {
       .join('')}
     <div class="section-title">Liga hinzufügen (OpenLigaDB)</div>
     <div class="card" style="display:flex;flex-direction:column;gap:10px">
-      <input type="text" id="lg-search" placeholder="Suchen, z.B. „em“, „wm“, „bundesliga“ …">
+      <input type="text" id="lg-search" placeholder="Suchen: „em“, „wm“, „premier“, „champions“ …">
       <div id="lg-results"></div>
       <div class="muted">Oder manuell:</div>
-      <input type="text" id="lg-shortcut" placeholder="Kürzel (z.B. bl1, em, wm)">
+      <input type="text" id="lg-shortcut" placeholder="Kürzel (OpenLigaDB: bl1, em, wm · football-data: fdPL, fdCL, fdWC)">
       <input type="text" id="lg-season" placeholder="Saison (z.B. 2026)">
       <input type="text" id="lg-name" placeholder="Anzeigename">
       <button class="btn" id="lg-add">Hinzufügen & Daten laden</button>
@@ -258,8 +258,67 @@ async function renderEvents() {
     </div>`;
 }
 
+
+/* ============================== Einstellungen ============================== */
+async function renderAdminSettings() {
+  const s = await api('/api/admin/settings');
+  const fdCfg = s.footballData || {};
+  view.innerHTML = `
+    <div class="section-title">Datenquelle: football-data.org</div>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <div class="muted">
+        Bringt internationale Top-Wettbewerbe (Premier League, La Liga, Serie A,
+        Champions League, WM, EM …). Kostenlosen API-Key holen:
+        <a href="https://www.football-data.org/client/register" target="_blank" rel="noopener" style="color:var(--accent)">football-data.org/client/register</a>
+      </div>
+      <div>
+        Status: ${fdCfg.configured
+          ? `✅ Key hinterlegt (${esc(fdCfg.masked || '')})${fdCfg.fromEnv ? ' – aus Umgebungsvariable, hat Vorrang' : ''}`
+          : '❌ Kein Key hinterlegt'}
+      </div>
+      <input type="password" id="fd-key" placeholder="API-Key eintragen (X-Auth-Token)" ${fdCfg.fromEnv ? 'disabled' : ''}>
+      <div class="btn-row">
+        <button class="btn" id="fd-save" ${fdCfg.fromEnv ? 'disabled' : ''}>Speichern</button>
+        <button class="btn secondary" id="fd-test" ${fdCfg.configured ? '' : 'disabled'}>Verbindung testen</button>
+        ${fdCfg.configured && !fdCfg.fromEnv ? '<button class="btn danger" id="fd-clear">Key entfernen</button>' : ''}
+      </div>
+      ${fdCfg.fromEnv ? '<div class="muted">Der Key kommt aktuell aus der Umgebungsvariable FOOTBALL_DATA_API_KEY. Zum Pflegen über dieses Formular die Variable aus der docker-compose.yml entfernen.</div>' : ''}
+      <div class="muted">Nach dem Speichern sofort aktiv – kein Neustart nötig. Danach unter „Ligen“ z.&nbsp;B. nach „premier“ oder „champions“ suchen.</div>
+    </div>
+    <div class="section-title">Datenquelle: OpenLigaDB</div>
+    <div class="card"><div class="muted">Immer aktiv, kein Key erforderlich (deutsche Ligen, DFB-Pokal, EM, WM).</div></div>
+  `;
+
+  $('#fd-save').onclick = async () => {
+    const key = $('#fd-key').value.trim();
+    if (!key) return toast('Bitte einen API-Key eingeben');
+    try {
+      await api('/api/admin/settings', { method: 'POST', body: { footballDataApiKey: key } });
+      toast('Key gespeichert ✅');
+      renderAdminSettings();
+    } catch (err) { toast(err.message); }
+  };
+  $('#fd-test').onclick = async () => {
+    const btn = $('#fd-test');
+    btn.disabled = true;
+    btn.textContent = '⏳ Teste…';
+    try {
+      const r = await api('/api/admin/settings/test-football-data', { method: 'POST' });
+      toast(`Verbindung OK – ${r.competitions} Wettbewerbe verfügbar ✅`, 4000);
+    } catch (err) { toast(`Test fehlgeschlagen: ${err.message}`, 4000); }
+    renderAdminSettings();
+  };
+  const clearBtn = $('#fd-clear');
+  if (clearBtn) clearBtn.onclick = async () => {
+    if (!confirm('football-data.org-Key wirklich entfernen?')) return;
+    await api('/api/admin/settings', { method: 'POST', body: { footballDataApiKey: '' } });
+    toast('Key entfernt');
+    renderAdminSettings();
+  };
+}
+
 /* ============================== Init ============================== */
-const RENDERERS = { users: renderUsers, leagues: renderLeagues, events: renderEvents };
+const RENDERERS = { users: renderUsers, leagues: renderLeagues, events: renderEvents, settings: renderAdminSettings };
 
 document.querySelectorAll('#admin-tabs .chip').forEach((chip) => {
   chip.onclick = () => {

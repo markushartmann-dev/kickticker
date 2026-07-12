@@ -400,7 +400,7 @@ async function renderSettings() {
     <div class="settings-group">
       <div class="section-title">App</div>
       <div class="setting-row"><div>Zum Homescreen hinzufügen<div class="desc">Android: Menü → „App installieren“ · iOS: Teilen → „Zum Home-Bildschirm“</div></div></div>
-      <div class="muted" style="padding:0 4px">Letzter Datenabgleich: ${state.config && state.config.lastSync ? fmtDate(state.config.lastSync) : 'unbekannt'} · Datenquelle: OpenLigaDB</div>
+      <div class="muted" style="padding:0 4px">Letzter Datenabgleich: ${state.config && state.config.lastSync ? fmtDate(state.config.lastSync) : 'unbekannt'} · Datenquelle${state.config && state.config.dataSources && state.config.dataSources.length > 1 ? 'n' : ''}: ${state.config && state.config.dataSources ? state.config.dataSources.join(', ') : 'OpenLigaDB'}</div>
     </div>
   `;
 
