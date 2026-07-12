@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>KickTicker – Adminportal</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/icons/icon-192.png">
+  <meta name="theme-color" content="#0f1420">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🛠️ <span>Adminportal</span></div>
+    <div class="topbar-right"><a class="icon-btn" href="/" title="Zur App">⚽</a></div>
+  </header>
+
+  <div class="filters">
+    <div class="chips" id="admin-tabs">
+      <button class="chip active" data-tab="users">Benutzer</button>
+      <button class="chip" data-tab="leagues">Ligen</button>
+      <button class="chip" data-tab="events">Ereignisse</button>
+    </div>
+  </div>
+
+  <main id="view"><div class="empty">Lädt…</div></main>
+  <div id="modal-root"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

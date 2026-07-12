@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>KickTicker – Fußball Live</title>
+  <meta name="description" content="Fußball-Liveticker mit Ergebnissen, Tabellen und Push-Benachrichtigungen">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="KickTicker">
+  <meta name="theme-color" content="#0f1420">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">⚽ <span>KickTicker</span></div>
+    <div class="topbar-right">
+      <span id="live-indicator" class="live-dot hidden" title="Live-Spiele laufen"></span>
+      <button id="btn-user" class="icon-btn" title="Konto">👤</button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <div id="league-chips" class="chips"></div>
+    <select id="team-filter" class="team-select">
+      <option value="">Alle Mannschaften</option>
+    </select>
+  </div>
+
+  <main id="view"></main>
+
+  <nav class="bottombar">
+    <button data-tab="live" class="tab active"><span class="tab-ico">🔴</span>Live</button>
+    <button data-tab="matchdays" class="tab"><span class="tab-ico">📅</span>Spieltage</button>
+    <button data-tab="table" class="tab"><span class="tab-ico">🏆</span>Tabelle</button>
+    <button data-tab="favorites" class="tab"><span class="tab-ico">⭐</span>Favoriten</button>
+    <button data-tab="settings" class="tab"><span class="tab-ico">⚙️</span>Mehr</button>
+  </nav>
+
+  <div id="modal-root"></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

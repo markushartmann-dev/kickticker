@@ -1,0 +1,21 @@
+services:
+  kickticker:
+    build: .
+    container_name: kickticker
+    restart: unless-stopped
+    ports:
+      - "2233:3000"
+    volumes:
+      - kickticker-data:/data
+    environment:
+      # Passwort des ersten Admin-Benutzers "admin" (nur beim allerersten Start relevant)
+      - ADMIN_PASSWORD=bitte-aendern
+      # Kontakt fuer den Push-Dienst (VAPID), am besten eigene Mail
+      - VAPID_SUBJECT=mailto:markushartmann.spam@googlemail.com
+      # Abfrage-Intervall bei OpenLigaDB in Sekunden (min. 15)
+      - SYNC_INTERVAL_SECONDS=60
+      # DEMO=1 aktiviert Beispieldaten + simuliertes Livespiel (ohne Internet)
+      # - DEMO=1
+
+volumes:
+  kickticker-data:
