@@ -16,6 +16,7 @@ Homescreen legen (PWA).
   - letzte zwei Plätze: direkter Abstieg, drittletzter: Relegation
   - (pro Liga im Adminportal frei konfigurierbar, z. B. CL-Plätze für die 1. Bundesliga)
 - **Team-Statistik** in der Datenbank: Heim/Auswärts-Bilanz, Form der letzten 5 Spiele
+- **Torschützentabelle** je Liga (aus den erfassten Toren berechnet, Eigentore ausgenommen)
 - **Filter** nach Liga und Mannschaft
 - **Favoriten** pro Benutzer (Stern-Markierung + Push)
 - **4 Farbschemata**: Dunkel, Hell, Rasen, Retro

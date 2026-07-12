@@ -12,6 +12,7 @@ const state = {
   matchday: null,
   matchdays: [],
   favorites: [],
+  tableView: 'standings', // 'standings' | 'scorers'
   pollTimer: null,
 };
 
@@ -79,6 +80,7 @@ function renderLeagueChips() {
       state.league = state.leagues.find((l) => l.shortcut === chip.dataset.shortcut && l.season === chip.dataset.season);
       state.team = '';
       state.matchday = null;
+      state.tableView = 'standings';
       renderLeagueChips();
       await loadTeams();
       renderTab();
@@ -119,7 +121,7 @@ function matchCard(m, { showLeague = false } = {}) {
     ${showLeague ? `<div class="match-league-tag" style="grid-column:1/-1">${esc(league ? league.name : m.league_shortcut)} · ${esc(m.group_name || '')}</div>` : ''}
     <div class="match-team">
       ${m.team1_icon ? `<img src="${esc(m.team1_icon)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
-      <span class="team-name">${esc(m.team1_name || '?')}${isFav(m.team1_id) ? '<span class="fav-star">⭐</span>' : ''}</span>
+      <span class="team-name">${esc(m.team1_name || 'N.N.')}${isFav(m.team1_id) ? '<span class="fav-star">⭐</span>' : ''}</span>
     </div>
     <div class="match-score">
       <div class="score ${live ? 'live' : ''}">${score}</div>
@@ -127,7 +129,7 @@ function matchCard(m, { showLeague = false } = {}) {
     </div>
     <div class="match-team right">
       ${m.team2_icon ? `<img src="${esc(m.team2_icon)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
-      <span class="team-name">${esc(m.team2_name || '?')}${isFav(m.team2_id) ? '<span class="fav-star">⭐</span>' : ''}</span>
+      <span class="team-name">${esc(m.team2_name || 'N.N.')}${isFav(m.team2_id) ? '<span class="fav-star">⭐</span>' : ''}</span>
     </div>
   </div>`;
 }
@@ -211,11 +213,26 @@ async function renderMatchdays() {
 }
 
 /* ============================== Tab: Tabelle ============================== */
+function tableViewSwitcher() {
+  return `<div class="chips" style="margin-bottom:10px">
+    <button class="chip ${state.tableView === 'standings' ? 'active' : ''}" data-tv="standings">Tabelle</button>
+    <button class="chip ${state.tableView === 'scorers' ? 'active' : ''}" data-tv="scorers">⚽ Torschützen</button>
+  </div>`;
+}
+
+function bindTableViewSwitcher() {
+  view.querySelectorAll('[data-tv]').forEach((b) => {
+    b.onclick = () => { state.tableView = b.dataset.tv; renderTable(); };
+  });
+}
+
 async function renderTable() {
   if (!state.league) { view.innerHTML = '<div class="empty">Keine Liga ausgewählt.</div>'; return; }
+  if (state.tableView === 'scorers') return renderScorers();
   const { standings, zones } = await api(`/api/standings?league=${state.league.shortcut}&season=${state.league.season}`);
   if (!standings.length) {
-    view.innerHTML = '<div class="empty">Noch keine Tabellendaten.<br>Die Tabelle wird nach dem ersten Datenabgleich berechnet.</div>';
+    view.innerHTML = tableViewSwitcher() + '<div class="empty">Noch keine Tabellendaten.<br>Die Tabelle wird nach dem ersten Datenabgleich berechnet.</div>';
+    bindTableViewSwitcher();
     return;
   }
   const rows = standings
@@ -233,6 +250,7 @@ async function renderTable() {
     .map((z) => `<div><span class="legend-swatch zone-${esc(z.type)}"></span>${esc(z.label)} (Platz ${z.from}${z.to !== z.from ? '–' + z.to : ''})</div>`)
     .join('');
   view.innerHTML = `
+    ${tableViewSwitcher()}
     <div class="table-wrap">
       <table class="standings">
         <thead><tr><th>#</th><th style="text-align:left">Team</th><th>Sp</th><th>S</th><th>U</th><th>N</th><th>Tore</th><th>Diff</th><th>Pkt</th></tr></thead>
@@ -241,9 +259,41 @@ async function renderTable() {
     </div>
     ${legend ? `<div class="zone-legend">${legend}</div>` : ''}
   `;
+  bindTableViewSwitcher();
   view.querySelectorAll('tr[data-team]').forEach((tr) => {
     tr.onclick = () => openTeamStats(Number(tr.dataset.team));
   });
+}
+
+async function renderScorers() {
+  const scorers = await api(`/api/scorers?league=${state.league.shortcut}&season=${state.league.season}`);
+  if (!scorers.length) {
+    view.innerHTML = tableViewSwitcher() + '<div class="empty">Noch keine Torschützen erfasst.</div>';
+    bindTableViewSwitcher();
+    return;
+  }
+  const rows = scorers
+    .map(
+      (s) => `<tr>
+      <td>${s.position}</td>
+      <td class="team-cell">${esc(s.name)}</td>
+      <td class="team-cell">${esc(s.team || '')}</td>
+      <td class="pts">${s.goals}</td>
+      <td>${s.penalties || ''}</td>
+    </tr>`
+    )
+    .join('');
+  view.innerHTML = `
+    ${tableViewSwitcher()}
+    <div class="table-wrap">
+      <table class="standings">
+        <thead><tr><th>#</th><th style="text-align:left">Spieler</th><th style="text-align:left">Team</th><th>Tore</th><th>Elfm.</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="muted" style="margin-top:8px;padding:0 4px">Eigentore zählen nicht. Quelle: erfasste Tore der Liga in der App-Datenbank.</div>
+  `;
+  bindTableViewSwitcher();
 }
 
 /* ============================== Tab: Favoriten ============================== */

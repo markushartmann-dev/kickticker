@@ -186,6 +186,55 @@ app.get('/api/standings', (req, res) => {
   res.json({ standings: withZone, zones });
 });
 
+// Torschuetzentabelle einer Liga: aus den gespeicherten Toren berechnet.
+// Das Team wird pro Tor aus der Spielstand-Aenderung abgeleitet.
+app.get('/api/scorers', (req, res) => {
+  const { league, season } = req.query;
+  if (!league || !season) return res.status(400).json({ error: 'league und season erforderlich' });
+  const rows = db
+    .prepare(
+      `SELECT g.match_id, g.id, g.scorer, g.score1, g.score2, g.is_penalty, g.is_own_goal,
+              t1.name AS team1_name, t2.name AS team2_name
+       FROM goals g
+       JOIN matches m ON m.id = g.match_id
+       LEFT JOIN teams t1 ON t1.id = m.team1_id
+       LEFT JOIN teams t2 ON t2.id = m.team2_id
+       WHERE m.league_shortcut = ? AND m.season = ?
+       ORDER BY g.match_id, g.id`
+    )
+    .all(league, season);
+
+  const byScorer = new Map();
+  let prevMatch = null;
+  let prev1 = 0;
+  let prev2 = 0;
+  for (const g of rows) {
+    if (g.match_id !== prevMatch) { prevMatch = g.match_id; prev1 = 0; prev2 = 0; }
+    const scoredByTeam1 = (g.score1 ?? 0) > prev1;
+    prev1 = g.score1 ?? prev1;
+    prev2 = g.score2 ?? prev2;
+    if (!g.scorer || g.is_own_goal) continue; // Eigentore zaehlen nicht fuer den Schuetzen
+    const entry = byScorer.get(g.scorer) || { name: g.scorer, goals: 0, penalties: 0, teams: new Map() };
+    entry.goals++;
+    if (g.is_penalty) entry.penalties++;
+    const teamName = scoredByTeam1 ? g.team1_name : g.team2_name;
+    if (teamName) entry.teams.set(teamName, (entry.teams.get(teamName) || 0) + 1);
+    byScorer.set(g.scorer, entry);
+  }
+
+  const scorers = [...byScorer.values()]
+    .map((e) => ({
+      name: e.name,
+      goals: e.goals,
+      penalties: e.penalties,
+      team: e.teams.size ? [...e.teams.entries()].sort((a, b) => b[1] - a[1])[0][0] : null,
+    }))
+    .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name))
+    .slice(0, 30)
+    .map((e, i) => ({ position: i + 1, ...e }));
+  res.json(scorers);
+});
+
 // Team-Statistik (Heim/Auswaerts, Form der letzten 5 Spiele)
 app.get('/api/teams/:id/stats', (req, res) => {
   const teamId = Number(req.params.id);
@@ -413,8 +462,7 @@ app.get('/api/admin/available-leagues', auth.requireAdmin, async (req, res) => {
 
 app.post('/api/admin/sync', auth.requireAdmin, async (req, res) => {
   try {
-    setSetting('last_full_sync', '0'); // Vollsync erzwingen
-    await sync.tick();
+    await sync.tick(true); // Vollsync erzwingen
     res.json({ ok: true, lastSync: getSetting('last_sync') });
   } catch (err) {
     res.status(500).json({ error: err.message });
