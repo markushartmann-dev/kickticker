@@ -382,7 +382,9 @@ async function renderSettings() {
         <div>Push aktivieren<div class="desc">Tore, Karten, Anpfiff, Halbzeit & Abpfiff deiner Favoriten</div></div>
         <label class="switch"><input type="checkbox" id="push-toggle" ${pushActive ? 'checked' : ''} ${!pushSupported || !state.user ? 'disabled' : ''}><span class="slider"></span></label>
       </div>
-      ${!pushSupported ? '<div class="error-note">Dieser Browser unterstützt keine Web-Push-Nachrichten. Auf iOS: App zuerst zum Homescreen hinzufügen (iOS 16.4+).</div>' : ''}
+      ${!pushSupported ? (location.protocol !== 'https:' && location.hostname !== 'localhost'
+        ? '<div class="error-note">Die App läuft über HTTP – Push-Nachrichten und Homescreen-Installation erfordern HTTPS (Reverse Proxy mit Zertifikat, siehe README).</div>'
+        : '<div class="error-note">Dieser Browser unterstützt keine Web-Push-Nachrichten. Auf iOS: App zuerst zum Homescreen hinzufügen (iOS 16.4+).</div>') : ''}
       ${pushSupported && !state.user ? '<div class="muted">Zum Aktivieren bitte zuerst anmelden.</div>' : ''}
       ${pushActive ? '<div class="btn-row"><button class="btn secondary" id="push-test">Testnachricht senden</button></div>' : ''}
     </div>
@@ -427,7 +429,7 @@ async function renderSettings() {
       if (pushToggle.checked) await enablePush();
       else await disablePush();
     } catch (err) {
-      toast(err.message);
+      toast(err.message, 9000);
     }
     renderSettings();
   };
@@ -446,8 +448,19 @@ function urlBase64ToUint8Array(base64) {
 }
 
 async function enablePush() {
+  if (!('Notification' in window)) {
+    throw new Error('Dieser Browser unterstützt keine Benachrichtigungen.');
+  }
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (isIos && !standalone) {
+    throw new Error('iPhone: Bitte die App zuerst über Teilen → „Zum Home-Bildschirm“ installieren und vom Homescreen öffnen – erst dann erlaubt iOS Push-Nachrichten (ab iOS 16.4).');
+  }
   const perm = await Notification.requestPermission();
-  if (perm !== 'granted') throw new Error('Benachrichtigungen wurden nicht erlaubt');
+  if (perm === 'denied') {
+    throw new Error('Benachrichtigungen sind für diese Seite blockiert. Android/Chrome: Schloss-Symbol neben der Adresse → Berechtigungen → Benachrichtigungen → Zulassen, dann Seite neu laden. Zusätzlich prüfen: Systemeinstellungen → Apps → Browser → Benachrichtigungen erlaubt.');
+  }
+  if (perm !== 'granted') throw new Error('Benachrichtigungen wurden nicht erlaubt – die Abfrage wurde geschlossen. Bitte erneut versuchen und „Zulassen“ antippen.');
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
