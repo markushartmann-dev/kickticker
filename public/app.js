@@ -11,6 +11,7 @@ const state = {
   tab: 'live',
   matchday: null,
   matchdays: [],
+  matchdayByLeague: {}, // Spieltag-Position je Liga in der "Alle"-Ansicht
   favorites: [],
   tableView: 'standings', // 'standings' | 'scorers'
   newsFavOnly: false,
@@ -86,6 +87,7 @@ function renderLeagueChips() {
       localStorage.setItem('selectedLeague', state.league ? `${state.league.shortcut}|${state.league.season}` : '');
       state.team = '';
       state.matchday = null;
+      state.matchdayByLeague = {};
       state.tableView = 'standings';
       renderLeagueChips();
       await loadTeams();
@@ -190,32 +192,80 @@ function eventRow(e) {
 }
 
 /* ============================== Tab: Spieltage ============================== */
-async function renderMatchdays() {
-  if (!state.league) { view.innerHTML = '<div class="empty">Bitte oben eine Liga auswählen,<br>um deren Spieltage zu sehen.</div>'; return; }
-  const { matchdays, current } = await api(`/api/matchdays?league=${state.league.shortcut}&season=${state.league.season}`);
-  state.matchdays = matchdays;
-  if (state.matchday == null) state.matchday = current;
+function matchdayNavHtml(day, matchday, idx, total, prevId, nextId) {
+  return `<div class="matchday-nav">
+    <button id="${prevId}" ${idx <= 0 ? 'disabled' : ''}>‹</button>
+    <div class="matchday-label">
+      ${esc(day ? day.group_name || `${day.matchday}. Spieltag` : `${matchday}. Spieltag`)}
+      <small>${day && day.first_kickoff ? fmtDate(day.first_kickoff).split(' ').slice(0, 2).join(' ') : ''} · ${day ? `${day.finished}/${day.total} gespielt` : ''}</small>
+    </div>
+    <button id="${nextId}" ${idx >= total - 1 ? 'disabled' : ''}>›</button>
+  </div>`;
+}
 
-  const idx = matchdays.findIndex((d) => d.matchday === state.matchday);
-  const day = matchdays[idx];
-
-  const params = new URLSearchParams({ league: state.league.shortcut, season: state.league.season, matchday: state.matchday });
+// Spieltag einer Liga laden: Spieltagsliste + Spiele des gewaehlten Spieltags
+async function loadLeagueMatchday(league, matchday) {
+  const { matchdays, current } = await api(`/api/matchdays?league=${league.shortcut}&season=${league.season}`);
+  const md = matchday != null ? matchday : current;
+  const idx = matchdays.findIndex((d) => d.matchday === md);
+  const params = new URLSearchParams({ league: league.shortcut, season: league.season, matchday: md });
   if (state.team) params.set('team', state.team);
-  const matches = await api(`/api/matches?${params}`);
+  const matches = matchdays.length ? await api(`/api/matches?${params}`) : [];
+  return { matchdays, matchday: md, idx, day: matchdays[idx], matches };
+}
+
+async function renderMatchdays() {
+  if (!state.league) return renderAllMatchdays();
+  const { matchdays, matchday, idx, day, matches } = await loadLeagueMatchday(state.league, state.matchday);
+  state.matchdays = matchdays;
+  state.matchday = matchday;
 
   view.innerHTML = `
-    <div class="matchday-nav">
-      <button id="md-prev" ${idx <= 0 ? 'disabled' : ''}>‹</button>
-      <div class="matchday-label">
-        ${esc(day ? day.group_name || `${day.matchday}. Spieltag` : `${state.matchday}. Spieltag`)}
-        <small>${day && day.first_kickoff ? fmtDate(day.first_kickoff).split(' ').slice(0, 2).join(' ') : ''} · ${day ? `${day.finished}/${day.total} gespielt` : ''}</small>
-      </div>
-      <button id="md-next" ${idx >= matchdays.length - 1 ? 'disabled' : ''}>›</button>
-    </div>
+    ${matchdayNavHtml(day, matchday, idx, matchdays.length, 'md-prev', 'md-next')}
     ${matches.length ? matches.map((m) => matchCard(m)).join('') : '<div class="empty">Keine Spiele für diesen Spieltag/Filter.</div>'}
   `;
   $('#md-prev').onclick = () => { state.matchday = matchdays[idx - 1].matchday; renderMatchdays(); };
   $('#md-next').onclick = () => { state.matchday = matchdays[idx + 1].matchday; renderMatchdays(); };
+  bindMatchCards(view);
+}
+
+// "Alle Ligen": aktueller Spieltag jeder aktivierten Liga als eigener
+// Abschnitt, jeweils mit eigener ‹/›-Navigation
+async function renderAllMatchdays() {
+  const results = await Promise.all(
+    state.leagues.map(async (league) => {
+      const key = `${league.shortcut}|${league.season}`;
+      try {
+        return { league, key, ...(await loadLeagueMatchday(league, state.matchdayByLeague[key])) };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  let html = '';
+  for (const r of results) {
+    if (!r || !r.matchdays.length) continue; // Liga ohne Daten ueberspringen
+    if (state.team && !r.matches.length) continue; // Team-Filter: leere Ligen ausblenden
+    html += `<div class="section-title">${esc(r.league.name)}</div>`;
+    html += matchdayNavHtml(r.day, r.matchday, r.idx, r.matchdays.length, `md-prev-${r.key}`, `md-next-${r.key}`);
+    html += r.matches.length
+      ? r.matches.map((m) => matchCard(m)).join('')
+      : '<div class="empty">Keine Spiele für diesen Spieltag/Filter.</div>';
+  }
+  view.innerHTML = html || '<div class="empty">Noch keine Spieltagsdaten.<br>Ligen werden im Adminportal aktiviert.</div>';
+
+  for (const r of results) {
+    if (!r || !r.matchdays.length) continue;
+    const go = (newIdx) => {
+      state.matchdayByLeague[r.key] = r.matchdays[newIdx].matchday;
+      renderMatchdays();
+    };
+    const prev = document.getElementById(`md-prev-${r.key}`);
+    const next = document.getElementById(`md-next-${r.key}`);
+    if (prev) prev.onclick = () => go(r.idx - 1);
+    if (next) next.onclick = () => go(r.idx + 1);
+  }
   bindMatchCards(view);
 }
 
