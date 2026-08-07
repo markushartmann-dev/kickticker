@@ -295,7 +295,11 @@ app.get('/api/news', async (req, res) => {
         .filter(Boolean);
       if (!favoriteNames.length) return res.json({ items: [], warnings: ['Noch keine Favoriten markiert'] });
     }
-    const result = await news.getNews({ league: league || null, favoriteNames });
+    const allowedLeagues = db
+      .prepare('SELECT shortcut FROM leagues WHERE enabled = 1')
+      .all()
+      .map((r) => r.shortcut);
+    const result = await news.getNews({ league: league || null, favoriteNames, allowedLeagues });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
