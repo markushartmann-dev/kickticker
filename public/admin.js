@@ -287,7 +287,23 @@ async function renderAdminSettings() {
     </div>
     <div class="section-title">Datenquelle: OpenLigaDB</div>
     <div class="card"><div class="muted">Immer aktiv, kein Key erforderlich (deutsche Ligen, DFB-Pokal, EM, WM).</div></div>
+    <div class="section-title">News-Feeds (RSS)</div>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <div class="muted">Quellen für die News-Rubrik. <code>league</code> = Liga-Kürzel für den Liga-Filter
+        (<code>null</code> = allgemeine News). Standard: offizielle kicker.de-Feeds.</div>
+      <textarea id="nf-json" style="width:100%;min-height:180px;font-family:monospace;font-size:.75rem;
+        background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px"></textarea>
+      <div class="btn-row"><button class="btn" id="nf-save">Feeds speichern</button></div>
+    </div>
   `;
+  $('#nf-json').value = JSON.stringify(s.newsFeeds || [], null, 2);
+  $('#nf-save').onclick = async () => {
+    try {
+      const feeds = JSON.parse($('#nf-json').value);
+      await api('/api/admin/settings', { method: 'POST', body: { newsFeeds: feeds } });
+      toast('News-Feeds gespeichert ✅');
+    } catch (err) { toast(`Ungültig: ${err.message}`, 4000); }
+  };
 
   $('#fd-save').onclick = async () => {
     const key = $('#fd-key').value.trim();

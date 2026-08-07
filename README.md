@@ -7,7 +7,9 @@ Homescreen legen (PWA).
 
 ## Funktionen
 
-- **Liveticker**: laufende Spiele, Spielstände, Tore, Ereignis-Feed
+- **Liveticker**: laufende Spiele, Spielstände, Tore, Ereignis-Feed —
+  standardmäßig über **alle Ligen**, per Filter auf eine Liga einschränkbar
+  (die Auswahl wird auf dem Gerät gemerkt)
 - **Push-Benachrichtigungen** für Favoriten-Teams: Anpfiff, Tor (inkl. Torschütze,
   Elfmeter/Eigentor), Halbzeit, Abpfiff *(Karten: siehe „Datenquellen“ unten)*
 - **Spieltage**: alle Spieltage der Saison durchblättern – auch kommende
@@ -20,6 +22,8 @@ Homescreen legen (PWA).
   ausgenommen); Fallback auf die offizielle Torjägerliste des Datenanbieters,
   z. B. bei Turnieren ohne gepflegte Schützennamen
 - **Filter** nach Liga und Mannschaft
+- **News-Rubrik**: Meldungen aus offiziellen RSS-Feeds (Standard: kicker.de),
+  filterbar nach Liga oder nur Favoriten-Teams; Feeds im Adminportal anpassbar
 - **Favoriten** pro Benutzer (Stern-Markierung + Push)
 - **4 Farbschemata**: Dunkel, Hell, Rasen, Retro
 - **Benutzerverwaltung + Adminportal** (`/admin`): Benutzer, Ligen, Tabellenzonen,

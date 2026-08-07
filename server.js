@@ -9,6 +9,7 @@ const { initVapid, notifyUser } = require('./lib/push');
 const sync = require('./lib/sync');
 const olb = require('./lib/openligadb');
 const fd = require('./lib/footballdata');
+const news = require('./lib/news');
 
 const app = express();
 app.use(express.json());
@@ -277,6 +278,30 @@ app.get('/api/teams/:id/stats', (req, res) => {
   res.json({ team, home, away, form, standing, recentMatches: finished.slice(0, 10) });
 });
 
+// News aus RSS-Feeds (Standard: kicker.de), optional nach Liga oder Favoriten
+app.get('/api/news', async (req, res) => {
+  try {
+    const { league, favorites } = req.query;
+    let favoriteNames = null;
+    if (favorites === '1') {
+      const user = auth.getSessionUser(req);
+      if (!user) return res.status(401).json({ error: 'Fuer den Favoriten-Filter bitte anmelden' });
+      favoriteNames = db
+        .prepare(
+          `SELECT t.name, t.short_name FROM favorites f JOIN teams t ON t.id = f.team_id WHERE f.user_id = ?`
+        )
+        .all(user.id)
+        .flatMap((t) => [t.name, t.short_name])
+        .filter(Boolean);
+      if (!favoriteNames.length) return res.json({ items: [], warnings: ['Noch keine Favoriten markiert'] });
+    }
+    const result = await news.getNews({ league: league || null, favoriteNames });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------------------------------------------------------------- Auth
 
 app.post('/api/auth/login', (req, res) => {
@@ -516,13 +541,20 @@ app.get('/api/admin/settings', auth.requireAdmin, (req, res) => {
       fromEnv,
       masked: active ? (active.length > 8 ? active.slice(0, 4) + '••••' + active.slice(-4) : '••••••') : null,
     },
+    newsFeeds: news.getFeeds(),
   });
 });
 
 app.post('/api/admin/settings', auth.requireAdmin, (req, res) => {
-  const { footballDataApiKey } = req.body || {};
+  const { footballDataApiKey, newsFeeds } = req.body || {};
   if (footballDataApiKey !== undefined) {
     setSetting('football_data_api_key', String(footballDataApiKey).trim());
+  }
+  if (newsFeeds !== undefined) {
+    if (!Array.isArray(newsFeeds) || newsFeeds.some((f) => !f || typeof f.url !== 'string' || typeof f.name !== 'string')) {
+      return res.status(400).json({ error: 'newsFeeds muss eine Liste aus {league, name, url} sein' });
+    }
+    setSetting('news_feeds', JSON.stringify(newsFeeds));
   }
   res.json({ ok: true });
 });

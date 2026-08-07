@@ -13,6 +13,7 @@ const state = {
   matchdays: [],
   favorites: [],
   tableView: 'standings', // 'standings' | 'scorers'
+  newsFavOnly: false,
   pollTimer: null,
 };
 
@@ -69,15 +70,20 @@ applyTheme(localStorage.getItem('theme') || 'dark');
 /* ============================== Filter-Leiste ============================== */
 function renderLeagueChips() {
   const wrap = $('#league-chips');
-  wrap.innerHTML = state.leagues
-    .map(
-      (l) => `<button class="chip ${state.league && l.shortcut === state.league.shortcut && l.season === state.league.season ? 'active' : ''}"
-        data-shortcut="${esc(l.shortcut)}" data-season="${esc(l.season)}">${esc(l.name)}</button>`
-    )
-    .join('');
+  wrap.innerHTML =
+    `<button class="chip ${!state.league ? 'active' : ''}" data-all="1">Alle</button>` +
+    state.leagues
+      .map(
+        (l) => `<button class="chip ${state.league && l.shortcut === state.league.shortcut && l.season === state.league.season ? 'active' : ''}"
+          data-shortcut="${esc(l.shortcut)}" data-season="${esc(l.season)}">${esc(l.name)}</button>`
+      )
+      .join('');
   wrap.querySelectorAll('.chip').forEach((chip) => {
     chip.onclick = async () => {
-      state.league = state.leagues.find((l) => l.shortcut === chip.dataset.shortcut && l.season === chip.dataset.season);
+      state.league = chip.dataset.all
+        ? null
+        : state.leagues.find((l) => l.shortcut === chip.dataset.shortcut && l.season === chip.dataset.season);
+      localStorage.setItem('selectedLeague', state.league ? `${state.league.shortcut}|${state.league.season}` : '');
       state.team = '';
       state.matchday = null;
       state.tableView = 'standings';
@@ -89,8 +95,9 @@ function renderLeagueChips() {
 }
 
 async function loadTeams() {
-  if (!state.league) { state.teams = []; return; }
-  state.teams = await api(`/api/teams?league=${state.league.shortcut}&season=${state.league.season}`);
+  state.teams = state.league
+    ? await api(`/api/teams?league=${state.league.shortcut}&season=${state.league.season}`)
+    : await api('/api/teams');
   const sel = $('#team-filter');
   sel.innerHTML =
     '<option value="">Alle Mannschaften</option>' +
@@ -184,7 +191,7 @@ function eventRow(e) {
 
 /* ============================== Tab: Spieltage ============================== */
 async function renderMatchdays() {
-  if (!state.league) { view.innerHTML = '<div class="empty">Keine Liga ausgewählt.</div>'; return; }
+  if (!state.league) { view.innerHTML = '<div class="empty">Bitte oben eine Liga auswählen,<br>um deren Spieltage zu sehen.</div>'; return; }
   const { matchdays, current } = await api(`/api/matchdays?league=${state.league.shortcut}&season=${state.league.season}`);
   state.matchdays = matchdays;
   if (state.matchday == null) state.matchday = current;
@@ -227,7 +234,7 @@ function bindTableViewSwitcher() {
 }
 
 async function renderTable() {
-  if (!state.league) { view.innerHTML = '<div class="empty">Keine Liga ausgewählt.</div>'; return; }
+  if (!state.league) { view.innerHTML = '<div class="empty">Bitte oben eine Liga auswählen,<br>um Tabelle und Torschützen zu sehen.</div>'; return; }
   if (state.tableView === 'scorers') return renderScorers();
   const { standings, zones } = await api(`/api/standings?league=${state.league.shortcut}&season=${state.league.season}`);
   if (!standings.length) {
@@ -354,6 +361,47 @@ async function renderFavorites() {
 
 async function refreshFavorites() {
   state.favorites = state.user ? await api('/api/favorites').catch(() => []) : [];
+}
+
+/* ============================== Tab: News ============================== */
+function timeAgo(iso) {
+  if (!iso) return '';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 60) return `vor ${Math.max(1, mins)} Min.`;
+  if (mins < 1440) return `vor ${Math.round(mins / 60)} Std.`;
+  return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+}
+
+async function renderNews() {
+  const params = new URLSearchParams();
+  if (state.league) params.set('league', state.league.shortcut);
+  if (state.newsFavOnly && state.user) params.set('favorites', '1');
+  const { items, warnings } = await api(`/api/news?${params}`);
+
+  let html = `<div class="chips" style="margin-bottom:10px">
+    <button class="chip ${!state.newsFavOnly ? 'active' : ''}" data-nf="0">Alle News</button>
+    <button class="chip ${state.newsFavOnly ? 'active' : ''}" data-nf="1" ${!state.user ? 'disabled' : ''}>⭐ Nur Favoriten</button>
+  </div>`;
+  if (!state.user) html += '<div class="muted" style="margin:0 4px 10px">Für den Favoriten-Filter bitte anmelden.</div>';
+  for (const w of warnings || []) html += `<div class="muted" style="margin:0 4px 10px">ℹ️ ${esc(w)}</div>`;
+
+  if (items.length) {
+    html += items
+      .map(
+        (n) => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="${esc(n.link)}" target="_blank" rel="noopener">
+        <div style="font-weight:600;line-height:1.35">${esc(n.title)}</div>
+        ${n.description ? `<div class="muted" style="margin-top:4px;line-height:1.4">${esc(n.description.slice(0, 140))}${n.description.length > 140 ? '…' : ''}</div>` : ''}
+        <div class="muted" style="margin-top:6px;font-size:.7rem">${esc(n.source)} · ${timeAgo(n.date)}</div>
+      </a>`
+      )
+      .join('');
+  } else {
+    html += '<div class="empty">Keine Meldungen gefunden.</div>';
+  }
+  view.innerHTML = html;
+  view.querySelectorAll('[data-nf]').forEach((b) => {
+    b.onclick = () => { state.newsFavOnly = b.dataset.nf === '1'; renderNews(); };
+  });
 }
 
 /* ============================== Tab: Einstellungen ============================== */
@@ -590,6 +638,7 @@ const TAB_RENDERERS = {
   live: renderLive,
   matchdays: renderMatchdays,
   table: renderTable,
+  news: renderNews,
   favorites: renderFavorites,
   settings: renderSettings,
 };
@@ -631,7 +680,10 @@ async function init() {
   state.config = await api('/api/config');
   state.user = state.config.user;
   state.leagues = await api('/api/leagues');
-  state.league = state.leagues[0] || null;
+  const saved = localStorage.getItem('selectedLeague');
+  state.league = saved
+    ? state.leagues.find((l) => `${l.shortcut}|${l.season}` === saved) || null
+    : null; // Standard: alle Ligen
   renderLeagueChips();
   await loadTeams();
   await refreshFavorites();
