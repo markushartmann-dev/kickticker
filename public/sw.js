@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'kickticker-v1';
+const CACHE = 'kickticker-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -26,24 +26,23 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// API: immer Netz (Live-Daten). Statisches: Cache-first mit Netz-Fallback.
+// API: immer Netz (Live-Daten). Statisches: Network-first mit Cache-Fallback —
+// so erscheinen neue Versionen sofort, offline kommt der letzte Stand aus dem Cache.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
 
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request).then((res) => {
-          if (res.ok) {
-            const clone = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(event.request, clone));
-          }
-          return res;
-        })
-    )
+    fetch(event.request)
+      .then((res) => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 
