@@ -88,7 +88,8 @@ funktioniert Push auch direkt im Browser.
 | `DATA_DIR` | `/data` (im Container) | Ablage der SQLite-DB |
 | `ADMIN_PASSWORD` | `admin` | Passwort des ersten Admin-Users (nur Erststart) |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | Kontakt für den Push-Dienst |
-| `SYNC_INTERVAL_SECONDS` | `60` | Abfrage-Intervall OpenLigaDB (min. 15) |
+| `SYNC_INTERVAL_SECONDS` | `60` | Abfrage-Intervall ohne Livespiele (min. 15) |
+| `LIVE_SYNC_INTERVAL_SECONDS` | `20` | Abfrage-Intervall während Livespielen (min. 15); dank Änderungserkennung per `getlastchangedate` API-schonend |
 | `FOOTBALL_DATA_API_KEY` | – | Optionaler Override; normalerweise im Adminportal → Einstellungen pflegen |
 | `DEMO` | – | `1` = Beispieldaten + simuliertes Livespiel |
 
