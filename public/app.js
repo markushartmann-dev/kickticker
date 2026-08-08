@@ -643,9 +643,34 @@ function openPasswordModal() {
   };
 }
 
+// Ordnet jedes Tor der Mannschaft zu, deren Spalte im Spielstand hochzaehlt
+// (bei Eigentoren also der Mannschaft, fuer die das Tor zaehlt)
+function goalsWithSide(goals) {
+  let p1 = 0;
+  let p2 = 0;
+  return [...goals]
+    .sort((a, b) => ((a.score1 ?? 0) + (a.score2 ?? 0)) - ((b.score1 ?? 0) + (b.score2 ?? 0)))
+    .map((g) => {
+      let side = null;
+      if ((g.score1 ?? 0) > p1) side = 1;
+      else if ((g.score2 ?? 0) > p2) side = 2;
+      if (g.score1 != null) p1 = g.score1;
+      if (g.score2 != null) p2 = g.score2;
+      return { ...g, side };
+    });
+}
+
 async function openMatchDetail(matchId) {
   const { match, goals, events } = await api(`/api/matches/${matchId}`);
   const score = match.score1 != null ? `${match.score1}:${match.score2}` : '–:–';
+  const teamBadge = (side) => {
+    if (!side) return '';
+    const icon = side === 1 ? match.team1_icon : match.team2_icon;
+    const name = (side === 1 ? match.team1_name : match.team2_name) || '';
+    return icon
+      ? `<img src="${esc(icon)}" width="16" height="16" style="vertical-align:-3px" alt="${esc(name)}" title="${esc(name)}" onerror="this.remove()"> `
+      : name ? `<span class="muted">${esc(name)} · </span>` : '';
+  };
   openModal(`
     <button class="modal-close">✕</button>
     <h2 style="text-align:center">${esc(match.team1_name)} ${score} ${esc(match.team2_name)}</h2>
@@ -655,9 +680,9 @@ async function openMatchDetail(matchId) {
       ${match.location ? `<br>${esc(match.location)}` : ''}
       ${match.is_live ? '<br><span class="badge-live">LIVE</span>' : ''}
     </div>
-    ${goals.length ? `<div class="section-title">Tore</div><div class="card">${goals
+    ${goals.length ? `<div class="section-title">Tore</div><div class="card">${goalsWithSide(goals)
       .map((g) => `<div class="event-row"><span class="event-time">${g.minute != null ? g.minute + "'" : ''}</span><span class="event-ico">⚽</span>
-        <span class="event-text">${g.score1}:${g.score2} ${esc(g.scorer || '')}${g.is_penalty ? ' (Elfmeter)' : ''}${g.is_own_goal ? ' (Eigentor)' : ''}</span></div>`)
+        <span class="event-text">${g.score1}:${g.score2} ${teamBadge(g.side)}${esc(g.scorer || '')}${g.is_penalty ? ' <span class="muted">(Elfmeter)</span>' : ''}${g.is_own_goal ? ' <span class="muted">(Eigentor)</span>' : ''}${g.is_overtime ? ' <span class="muted">(Nachspielzeit)</span>' : ''}</span></div>`)
       .join('')}</div>` : ''}
     ${events.length ? `<div class="section-title">Ticker</div><div class="card">${events.slice().reverse().map((e) => eventRow(e)).join('')}</div>` : ''}
     ${!goals.length && !events.length ? '<div class="empty">Noch keine Ereignisse.</div>' : ''}
